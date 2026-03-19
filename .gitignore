@@ -1,0 +1,15 @@
+# Python
+.idea/
+__pycache__/
+*.py[cod]
+venv/
+.env
+
+# Arquivos do Sistema
+impressoras.json
+*.pdf
+
+# PyInstaller (se gerar executável)
+dist/
+build/
+*.spec
