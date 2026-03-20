@@ -12,7 +12,7 @@ O **Monitor Pro** automatiza a coleta de dados técnicos de impressoras de rede 
 
 Foi desenhado para rodar em servidores Linux ou estações de trabalho de SysAdmins, permitindo uma visão unificada de suprimentos e hardware.
 
-*![alt text](image-1.png)*
+*![alt text](/Img/image.png)*
 
 ## 🚀 Funcionalidades Principais
 

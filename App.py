@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 import asyncio
 import os
 import json
@@ -16,15 +17,15 @@ from reportlab.lib.units import cm
 
 # ================= CONFIGURAÇÃO DE TELA (WINDOWS) =================
 def configurar_terminal(nome_exibicao="INKSIGHT"):
-    """Ajusta o tamanho da fonte, título e dimensões da janela do CMD"""
     if os.name == 'nt':
-        # 1. Título da Janela
-        os.system(f"title {nome_exibicao} - Auditoria de Impressoras")
+        # FORÇA O TERMINAL A ACEITAR EMOJIS (UTF-8)
+        os.system('chcp 65001 > nul')
         
-        # 2. Tamanho do Bloco (Colunas=120, Linhas=35)
-        os.system('mode con: cols=90 lines=30')
+        # Título e Tamanho
+        os.system(f"title {nome_exibicao} - Gestão de Impressoras")
+        os.system('mode con: cols=100 lines=30')
         
-        # 3. Configuração de Fonte Profissional
+        # Fonte Consolas (suporta emojis básicos no Windows 10/11)
         STD_OUTPUT_HANDLE = -11
         class COORD(ctypes.Structure):
             _fields_ = [("X", ctypes.c_short), ("Y", ctypes.c_short)]
@@ -41,12 +42,12 @@ def configurar_terminal(nome_exibicao="INKSIGHT"):
         font = CONSOLE_FONT_INFOEX()
         font.cbSize = ctypes.sizeof(CONSOLE_FONT_INFOEX())
         font.dwFontSize.X = 0
-        font.dwFontSize.Y = 20  # Tamanho da letra
+        font.dwFontSize.Y = 22  # Fonte um pouco maior para facilitar leitura
         font.FontWeight = 400
         font.FaceName = "Consolas"
         ctypes.windll.kernel32.SetCurrentConsoleFontEx(handle, 0, ctypes.byref(font))
 
-# ================= ESTILOS E CORES (ANSI) =================
+# ================= ESTILOS E CORES =================
 class Theme:
     CYAN = "\033[96m"
     YELLOW = "\033[93m"
@@ -57,7 +58,7 @@ class Theme:
     HEADER_PDF = colors.HexColor('#2C3E50')
     ZEBRA_LIGHT = colors.HexColor('#F2F4F4')
 
-# ================= GESTÃO DE ARQUIVOS E CONFIGS =================
+# ================= GESTÃO DE CONFIGURAÇÕES =================
 class ConfigManager:
     def __init__(self, printers_path="impressoras.json", settings_path="config.json"):
         self.printers_path = printers_path
@@ -119,7 +120,7 @@ class ScannerSNMP:
     async def fetch(printer_info: Dict[str, str]) -> Dict[str, Any]:
         ip = printer_info['ip']
         engine = hlapi.SnmpEngine()
-        res = {**printer_info, "status": "OFFLINE", "contador": "0", "toner": "-", "modelo_real": "N/A", "serial": "-"}
+        res = {**printer_info, "status": "OFFLINE", "contador": "0", "modelo_real": "N/A", "serial": "-"}
         try:
             transport = await hlapi.UdpTransportTarget.create((ip, 161), timeout=1.2, retries=1)
             objs = [hlapi.ObjectType(hlapi.ObjectIdentity(oid)) for oid in ScannerSNMP.OIDS.values()]
@@ -130,10 +131,6 @@ class ScannerSNMP:
                 res["modelo_real"] = ScannerSNMP.limpar_modelo(varBinds[0][1].prettyPrint())
                 res["serial"] = varBinds[1][1].prettyPrint().strip()
                 res["contador"] = varBinds[2][1].prettyPrint() or "0"
-                try:
-                    cur, m_max = int(varBinds[3][1]), int(varBinds[4][1])
-                    res["toner"] = f"{int((cur/m_max)*100)}%" if m_max > 0 else "OK"
-                except: res["toner"] = "OK"
         except: pass
         finally: engine.close_dispatcher()
         return res
@@ -147,34 +144,49 @@ class ReportGenerator:
         canvas.setStrokeColor(Theme.HEADER_PDF)
         canvas.line(1*cm, 1.2*cm, landscape(A4)[0]-1*cm, 1.2*cm)
         page_num = canvas.getPageNumber()
-        text = f"{nome_empresa} | Relatório de Impressoras | Página {page_num}"
+        data_rodape = datetime.now().strftime('%d/%m/%Y %H:%M')
+        text = f"{nome_empresa} | Gerado em: {data_rodape} | Página {page_num}"
         canvas.drawCentredString(landscape(A4)[0]/2, 0.8*cm, text)
         canvas.restoreState()
 
     @staticmethod
     def create_pdf(data: List[Dict[str, Any]], nome_empresa: str):
-        filename = f"Relatorio_Auditoria_{datetime.now().strftime('%Y%m%d_%H%M')}.pdf"
+        agora = datetime.now()
+        data_formatada = agora.strftime('%d/%m/%Y às %H:%M:%S')
+        filename = f"Relatorio_Auditoria_{agora.strftime('%Y%m%d_%H%M')}.pdf"
         doc = SimpleDocTemplate(filename, pagesize=landscape(A4), margins=(1*cm, 1*cm, 1*cm, 1.5*cm))
         elements = []
         styles = getSampleStyleSheet()
 
         title = styles['Title']
         title.textColor = Theme.HEADER_PDF
-        elements.append(Paragraph(f"<b>{nome_empresa.upper()}</b> - Relatório Impressoras", title))
+        elements.append(Paragraph(f"<b>{nome_empresa.upper()}</b> - Relatório de Impressoras", title))
+        
+        style_info = styles['Normal']
+        elements.append(Paragraph(f"<b>Data da Coleta:</b> {data_formatada}", style_info))
+        online = sum(1 for d in data if d['status'] == "ONLINE")
+        elements.append(Paragraph(f"<b>Resumo:</b> {len(data)} Impressoras total | {online} Online | {len(data)-online} Offline", style_info))
         elements.append(Spacer(1, 15))
+
+        style_status_center = styles['Normal'].clone('style_status_center')
+        style_status_center.alignment = 1
 
         headers = ["SETOR", "NOME/ID", "MODELO", "IP", "CONTADOR", "SERIAL", "STATUS"]
         table_data = [headers]
 
         for d in sorted(data, key=lambda x: x['setor']):
-            status_html = f"<font color='green'><b>{d['status']}</b></font>" if d['status'] == "ONLINE" else f"<font color='red'><b>{d['status']}</b></font>"
-            cnt_fmt = f"{int(d['contador']):,}".replace(',', '.')
+            cor_status = 'green' if d['status'] == "ONLINE" else 'red'
+            status_html = f"<b><font color='{cor_status}'>{d['status']}</font></b>"
+            try: cnt_fmt = f"{int(d['contador']):,}".replace(',', '.')
+            except: cnt_fmt = d['contador']
+
             table_data.append([
                 d['setor'].upper()[:12], d['nome'][:15], d['modelo_real'], d['ip'],
-                cnt_fmt, d['serial'][:20], Paragraph(status_html, styles['Normal'])
+                cnt_fmt, d['serial'][:20], Paragraph(status_html, style_status_center)
             ])
 
-        tbl = Table(table_data, colWidths=[3.0*cm, 3.5*cm, 4.5*cm, 3.2*cm, 2.8*cm, 4.5*cm, 1.8*cm, 2.5*cm], repeatRows=1)
+        larguras = [3.5*cm, 4.0*cm, 5.5*cm, 3.5*cm, 3.0*cm, 5.0*cm, 3.2*cm]
+        tbl = Table(table_data, colWidths=larguras, repeatRows=1)
         tbl.setStyle(TableStyle([
             ('BACKGROUND', (0, 0), (-1, 0), Theme.HEADER_PDF),
             ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
@@ -182,11 +194,14 @@ class ReportGenerator:
             ('GRID', (0, 0), (-1, -1), 0.1, colors.grey),
             ('ROWBACKGROUNDS', (0, 1), (-1, -1), [colors.white, Theme.ZEBRA_LIGHT]),
             ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+            ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+            ('FONTSIZE', (0, 0), (-1, -1), 9),
         ]))
+        
         elements.append(tbl)
         doc.build(elements, onFirstPage=lambda c, d: ReportGenerator._header_footer(c, d, nome_empresa), 
                   onLaterPages=lambda c, d: ReportGenerator._header_footer(c, d, nome_empresa))
-        print(f"\n{Theme.GREEN}✅ Relatório salvo com sucesso!{Theme.RESET}")
+        print(f"\n{Theme.GREEN}✅ PDF Gerado com sucesso!{Theme.RESET}")
 
 # ================= APP PRINCIPAL =================
 class App:
@@ -197,34 +212,35 @@ class App:
         os.system('cls' if os.name == 'nt' else 'clear')
         nome = self.config.get_sys_name()
         print(f"{Theme.CYAN}{Theme.BOLD}")
-        print(f"  {'='*60}")
-        print(f"  {nome.center(58)}")
-        print(f"  {'='*60}")
-        print(f"  {Theme.YELLOW}:: GESTÃO E AUDITORIA DE IMPRESSORAS ::{Theme.RESET}\n")
+        print(f"  {'='*65}")
+        print(f"  {nome.center(63)}")
+        print(f"  {'='*65}")
+        print(f"  :: {Theme.YELLOW}Relatório de Impressoras{Theme.CYAN} ::{Theme.RESET}\n")
 
     async def dashboard(self):
         printers = self.config.load_printers()
         if not printers: return
         self.banner()
-        print(f"{Theme.YELLOW}🔄 Consultando dispositivos...{Theme.RESET}")
+        print(f"{Theme.YELLOW}🔄 Sincronizando dados...{Theme.RESET}")
         results = await asyncio.gather(*[ScannerSNMP.fetch(p) for p in printers])
         self.banner()
-        head = f"{'SETOR':<12} | {'NOME/ID':<15} | {'IP':<13} | {'PÁGINAS':<12} | {'STATUS':<9} | {'TONER'}"
+        head = f"{'SETOR':<12} | {'NOME/ID':<15} | {'IP':<13} | {'PÁGINAS':<12} | {'STATUS'}"
         print(f"{Theme.BOLD}{head}{Theme.RESET}")
-        print("-" * 100)
+        print("-" * 75)
         for r in results:
             color = Theme.GREEN if r['status'] == "ONLINE" else Theme.RED
-            cnt_fmt = f"{int(r['contador']):,}".replace(',', '.')
-            print(f"{r['setor']:<12} | {r['nome']:<15} | {r['ip']:<13} | {cnt_fmt:<12} | {color}{r['status']:<9}{Theme.RESET} | {r['toner']}")
+            try: cnt_fmt = f"{int(r['contador']):,}".replace(',', '.')
+            except: cnt_fmt = r['contador']
+            print(f"{r['setor']:<12} | {r['nome']:<15} | {r['ip']:<13} | {cnt_fmt:<12} | {color}{r['status']}{Theme.RESET}")
         input(f"\n[ENTER] Voltar...")
 
     def menu_config(self):
         while True:
             self.banner()
-            print(f"{Theme.BOLD}CONFIGURAÇÕES:{Theme.RESET}")
+            print(f"{Theme.BOLD}⚙️  CONFIGURAÇÕES:{Theme.RESET}")
             print(f"[1] Adicionar Impressora")
             print(f"[2] Remover Impressora")
-            print(f"[3] Alterar Nome do Sistema/Empresa")
+            print(f"[3] Alterar Nome da Empresa")
             print(f"[0] Voltar")
             op = input(f"\n{Theme.BOLD}Escolha: {Theme.RESET}")
             if op == '1':
@@ -236,16 +252,18 @@ class App:
                 novo = input("Novo nome: ")
                 if novo: 
                     self.config.set_sys_name(novo)
-                    configurar_terminal(novo) # Atualiza o título na hora
+                    configurar_terminal(novo)
             elif op == '0': break
 
     async def run(self):
         while True:
             self.banner()
+            # EMOJIS ADICIONADOS AQUI
             print(f"{Theme.CYAN}[1]{Theme.RESET} 📄 Gerar Relatório PDF")
             print(f"{Theme.CYAN}[2]{Theme.RESET} 📟 Dashboard Real-time")
-            print(f"{Theme.CYAN}[3]{Theme.RESET} ⚙️ Configurações")
+            print(f"{Theme.CYAN}[3]{Theme.RESET} ⚙️  Configurações")
             print(f"{Theme.RED}[0]{Theme.RESET} 🚪 Sair")
+            
             choice = input(f"\n{Theme.BOLD}Escolha: {Theme.RESET}")
             if choice == '1':
                 printers = self.config.load_printers()
@@ -258,14 +276,9 @@ class App:
             elif choice == '0': break
 
 if __name__ == "__main__":
-    # 1. Carrega o nome primeiro para configurar a janela
     temp_config = ConfigManager()
     sys_name = temp_config.get_sys_name()
-    
-    # 2. Configura o terminal
     configurar_terminal(sys_name)
-    
-    # 3. Inicia o App
     app = App()
     try:
         asyncio.run(app.run())
