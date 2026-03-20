@@ -35,35 +35,37 @@ Foi desenhado para rodar em servidores Linux ou estações de trabalho de SysAdm
 1.  **Acesso de Rede:** O computador onde o script roda deve ter acesso às impressoras (ping).
 2.  **Porta 161 (UDP):** Deve estar liberada no Firewall.
 3.  **SNMP Habilitado:** As impressoras devem estar com SNMP ativo e comunidade definida como `public` (padrão do script).
-4.  **Nota sobre USB:** Impressoras conectadas apenas via USB **não** são suportadas, pois não possuem endereço IP para consulta SNMP.
+4.  **Nota sobre USB:** Impressoras conectadas apenas via USB **não** são suportadas.
 
-## 📦 Instalação e Configuração
+## 📦 Instalação e Execução
 
+### Opção 1: Executável (Windows)
+Para usuários que não possuem Python instalado, baixe a versão compilada na aba **[Releases](https://github.com/Saguicangaceiro/projeto_antigo/releases)** deste repositório.
+
+### Opção 2: Via Código Fonte (Desenvolvedor)
 1.  **Clone o repositório:**
     ```bash
-    git clone https://github.com/Saguicangaceiro/projeto_antigo.git
+    git clone [https://github.com/Saguicangaceiro/projeto_antigo.git](https://github.com/Saguicangaceiro/projeto_antigo.git)
     cd projeto_antigo
     ```
 
-2.  **Crie e ative um ambiente virtual (Recomendado):**
+2.  **Ambiente Virtual e Dependências:**
     ```bash
-    # Linux / macOS
-    python3 -m venv venv
-    source venv/bin/activate
-
-    # Windows
     python -m venv venv
-    .\venv\Scripts\activate
-    ```
-
-3.  **Instale as dependências:**
-    ```bash
+    # Ative o venv (Windows: .\venv\Scripts\activate | Linux: source venv/bin/activate)
     pip install -r requirements.txt
     ```
 
-## 🖥️ Como Usar
+3.  **Executar:**
+    ```bash
+    python monitor_pro.py
+    ```
 
-Execute o script principal:
+## ✒️ Créditos e Licença
 
-```bash
-python3 monitor_pro.py
+Este projeto está sob a licença MIT.
+
+* **Ícone do Aplicativo:** Criado por [Eucalyp](https://www.flaticon.com/br/autores/eucalyp) - [Flaticon](https://www.flaticon.com/br/icone-gratis/impressora-multifuncoes_1547967).
+* **Desenvolvedor:** [Saguicangaceiro](https://github.com/Saguicangaceiro)
+
+---
